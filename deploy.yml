@@ -1,20 +1,18 @@
+# deploy.yml
 ---
-- name: Deploy Flask App and PostgreSQL DB
-  hosts: db_server, app_server
+- name: Configure PostgreSQL on DB host(s)
+  hosts: db_server
+  become: true
+  roles:
+    - postgresql
+
+- name: Prepare Python and deploy Flask app on App host(s)
+  hosts: app_server
   become: true
   vars:
-    # Base path for the application deployment
     app_base_path: /opt/flask-app
+    # Define if you aren't passing it from Jenkins:
+    # app_artifact_path: /tmp/app.tar.gz
   roles:
-    - role: postgresql
-      tags: db
-      # Only run this role on the db_server group
-      when: inventory_hostname in groups['db_server']
-    - role: python-flask
-      tags: app
-      # Only run this role on the app_server group
-      when: inventory_hostname in groups['app_server']
-    - role: flask-deploy
-      tags: app
-      # Only run this role on the app_server group
-      when: inventory_hostname in groups['app_server']
+    - python-flask
+    - flask-deploy
