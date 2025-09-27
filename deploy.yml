@@ -1,13 +1,13 @@
 # deploy.yml
 ---
 - name: Configure PostgreSQL on DB host(s)
-  hosts: db_server
+  hosts: DB_server
   become: true
   roles:
     - postgresql
 
 - name: Prepare Python and deploy Flask app on App host(s)
-  hosts: app_server
+  hosts: App_server
   become: true
   vars:
     app_base_path: /opt/flask-app
