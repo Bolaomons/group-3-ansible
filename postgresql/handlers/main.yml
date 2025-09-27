@@ -2,5 +2,5 @@
 - name: Restart postgresql
   become: true
   service:
-    name: "{{ (ansible_facts.os_family == 'RedHat') | ternary('postgresql', 'postgresql') }}"
+    name: postgresql
     state: restarted
