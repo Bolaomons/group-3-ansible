@@ -1,71 +1,116 @@
 ---
-# 0) Assert we really are on Debian/Ubuntu (fail fast if not)
-- name: Ensure target is Debian/Ubuntu
-  ansible.builtin.assert:
-    that: ansible_facts.os_family == "Debian"
-    fail_msg: "This role expects Debian/Ubuntu. Detected {{ ansible_facts.os_family }}."
-    success_msg: "Debian/Ubuntu detected."
+# Install & configure PostgreSQL on Debian/Ubuntu or RedHat/Amazon
 
-# 1) Bootstrap apt-get + python3-apt so the apt module behaves
-- name: Bootstrap apt tools if needed
-  become: true
-  ansible.builtin.raw: |
-    set -e
-    if command -v apt-get >/dev/null 2>&1; then
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update -y || apt-get update
-      if ! dpkg -s python3-apt >/dev/null 2>&1; then
-        apt-get install -y python3-apt
-      fi
-    else
-      echo "apt-get not found"; exit 1
-    fi
-  changed_when: false
+# Debian/Ubuntu branch
+- block:
+    - name: Debian | install PostgreSQL
+      become: true
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+        state: present
+        update_cache: yes
+        force_apt_get: yes
 
-# 2) Now use the apt module (force apt-get path)
-- name: Install PostgreSQL
-  become: true
-  ansible.builtin.apt:
-    name:
-      - postgresql
-      - postgresql-contrib
-    state: present
-    update_cache: yes
-    force_apt_get: yes
+    - name: Debian | ensure service running
+      become: true
+      service:
+        name: postgresql
+        state: started
+        enabled: true
+  when: ansible_facts.os_family == "Debian"
 
-- name: Ensure PostgreSQL is enabled and running
-  become: true
-  ansible.builtin.service:
-    name: postgresql
-    state: started
-    enabled: true
+# RedHat/Amazon branch (covers RHEL, Rocky, Alma, Amazon Linux)
+- block:
+    # Amazon Linux 2 has modular packages via amazon-linux-extras (e.g., postgresql14)
+    - block:
+        - name: Amazon Linux 2 | enable postgres14 extras (idempotent best-effort)
+          become: true
+          command: amazon-linux-extras enable postgresql14
+          args:
+            creates: /etc/yum.repos.d/amzn2-extras.repo
+          changed_when: false
+          failed_when: false
 
-# 3) Find or create pg_hba.conf and ensure localhost rule
-- name: Locate pg_hba.conf
+        - name: Amazon Linux 2 | install PostgreSQL 14
+          become: true
+          yum:
+            name:
+              - postgresql14
+              - postgresql14-server
+            state: present
+
+        - name: Amazon Linux 2 | initdb if needed
+          become: true
+          command: /usr/pgsql-14/bin/postgresql-setup initdb
+          args:
+            creates: /var/lib/pgsql/14/data/PG_VERSION
+
+        - name: Amazon Linux 2 | ensure service running
+          become: true
+          service:
+            name: postgresql-14
+            state: started
+            enabled: true
+      when: ansible_facts.distribution == "Amazon" and
+            ansible_facts.distribution_major_version | int == 2
+
+    # Amazon Linux 2023 / RHEL / Rocky / Alma use dnf + postgresql-server
+    - block:
+        - name: RedHat | install PostgreSQL server
+          become: true
+          dnf:
+            name:
+              - postgresql-server
+              - postgresql
+            state: present
+
+        - name: RedHat | initdb if needed
+          become: true
+          command: /usr/bin/postgresql-setup --initdb
+          args:
+            creates: /var/lib/pgsql/data/PG_VERSION
+
+        - name: RedHat | ensure service running
+          become: true
+          service:
+            name: postgresql
+            state: started
+            enabled: true
+      when: not (ansible_facts.distribution == "Amazon" and
+                 ansible_facts.distribution_major_version | int == 2)
+  when: ansible_facts.os_family == "RedHat"
+
+# Common: locate pg_hba.conf and ensure localhost rule
+- name: Find pg_hba.conf (any platform)
   become: true
-  ansible.builtin.find:
-    paths: /postgresql
+  find:
+    paths:
+      - /postgresql
+      - /var/lib/pgsql
     patterns: pg_hba.conf
-    recurse: yes
+    recurse: true
   register: pg_hba
 
-- name: Create pg_hba.conf from template if missing
+# If file exists, edit it; else create a default for Debian 14 path (adjusts on AL2 above)
+- name: Ensure localhost rule in pg_hba.conf (if present)
   become: true
-  ansible.builtin.template:
+  lineinfile:
+    path: "{{ pg_hba.files[0].path }}"
+    regexp: '^host\s+all\s+all\s+127\.0\.0\.1/32\s+\w+'
+    line: 'host all all 127.0.0.1/32 md5'
+    backrefs: true
+  when: pg_hba.matched > 0
+  notify: Restart postgresql
+
+- name: Create pg_hba.conf for Debian default if missing (rare)
+  become: true
+  template:
     src: pg_hba.conf.j2
     dest: "/postgresql/{{ postgresql_version | default('14') }}/main/pg_hba.conf"
     owner: postgres
     group: postgres
     mode: "0640"
-  when: pg_hba.matched == 0
-  notify: Restart postgresql
-
-- name: Allow local connections in existing pg_hba.conf
-  become: true
-  ansible.builtin.lineinfile:
-    path: "{{ pg_hba.files[0].path }}"
-    regexp: '^host\s+all\s+all\s+127\.0\.0\.1/32\s+\w+'
-    line: 'host all all 127.0.0.1/32 md5'
-    backrefs: yes
-  when: pg_hba.matched > 0
+  when: pg_hba.matched == 0 and ansible_facts.os_family == "Debian"
   notify: Restart postgresql
