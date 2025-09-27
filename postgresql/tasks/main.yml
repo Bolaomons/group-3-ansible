@@ -1,4 +1,11 @@
 ---
+- name: Debian | bootstrap python3-apt if needed
+  become: true
+  raw: |
+    test -x /usr/bin/apt-get && (apt-get update -y || apt-get update) && apt-get install -y python3-apt
+  changed_when: false
+  failed_when: false
+
 - name: Install PostgreSQL
   become: true
   apt:
@@ -23,6 +30,17 @@
     recurse: yes
   register: pg_hba
 
+- name: Create pg_hba.conf from template if missing
+  become: true
+  template:
+    src: pg_hba.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version | default('14') }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  when: pg_hba.matched == 0
+  notify: Restart postgresql
+  
 - name: Allow local connections in pg_hba.conf
   become: true
   lineinfile:
