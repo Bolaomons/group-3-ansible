@@ -1,4 +1,11 @@
 ---
+- name: Debian | bootstrap python3-apt if needed
+  become: true
+  raw: |
+    test -x /usr/bin/apt-get && (apt-get update -y || apt-get update) && apt-get install -y python3-apt
+  changed_when: false
+  failed_when: false
+  
 - name: Install PostgreSQL packages (Debian/Ubuntu)
   become: true
   ansible.builtin.apt:
