@@ -1,29 +1,32 @@
 ---
-- name: Install PostgreSQL packages (Debian/Ubuntu)
+- name: Install PostgreSQL
   become: true
-  ansible.builtin.apt:
-    name:
-      - postgresql
-      - postgresql-contrib
+  apt:
+    name: [postgresql, postgresql-contrib]
     state: present
     update_cache: yes
-  when: ansible_os_family == "Debian"
 
-- name: Ensure PostgreSQL is enabled and running (Debian/Ubuntu)
+- name: Ensure PostgreSQL is enabled and running
   become: true
-  ansible.builtin.service:
+  service:
     name: postgresql
     state: started
     enabled: true
-  when: ansible_os_family == "Debian"
 
-# Update pg_hba.conf (Debian path). Change "14" if your version differs.
-- name: Allow local connections in pg_hba.conf (Debian/Ubuntu)
+- name: Locate pg_hba.conf
   become: true
-  ansible.builtin.lineinfile:
-    path: "/etc/postgresql/14/main/pg_hba.conf"
+  find:
+    paths: /etc/postgresql
+    patterns: pg_hba.conf
+    recurse: yes
+  register: pg_hba
+
+- name: Allow local connections in pg_hba.conf
+  become: true
+  lineinfile:
+    path: "{{ pg_hba.files[0].path }}"
     regexp: '^host\s+all\s+all\s+127\.0\.0\.1/32\s+\w+'
     line: 'host all all 127.0.0.1/32 trust'
     backrefs: yes
+  when: pg_hba.matched > 0
   notify: Restart postgresql
-  when: ansible_os_family == "Debian"
