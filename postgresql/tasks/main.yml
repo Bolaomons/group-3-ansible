@@ -1,29 +1,5 @@
 ---
-# 0) Assert we really are on Debian/Ubuntu (fail fast if not)
-- name: Ensure target is Debian/Ubuntu
-  ansible.builtin.assert:
-    that: ansible_facts.os_family == "Debian"
-    fail_msg: "This role expects Debian/Ubuntu. Detected {{ ansible_facts.os_family }}."
-    success_msg: "Debian/Ubuntu detected."
-
-# 1) Bootstrap apt-get + python3-apt so the apt module behaves
-- name: Bootstrap apt tools if needed
-  become: true
-  ansible.builtin.raw: |
-    set -e
-    if command -v apt-get >/dev/null 2>&1; then
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update -y || apt-get update
-      if ! dpkg -s python3-apt >/dev/null 2>&1; then
-        apt-get install -y python3-apt
-      fi
-    else
-      echo "apt-get not found"; exit 1
-    fi
-  changed_when: false
-
-# 2) Now use the apt module (force apt-get path)
-- name: Install PostgreSQL
+- name: Install PostgreSQL packages (Debian/Ubuntu)
   become: true
   ansible.builtin.apt:
     name:
@@ -31,41 +7,25 @@
       - postgresql-contrib
     state: present
     update_cache: yes
-    force_apt_get: yes
+  when: ansible_os_family == "Debian"
 
-- name: Ensure PostgreSQL is enabled and running
+- name: Ensure PostgreSQL is enabled and running (Debian/Ubuntu)
   become: true
   ansible.builtin.service:
     name: postgresql
     state: started
     enabled: true
+  when: ansible_os_family == "Debian"
 
-# 3) Find or create pg_hba.conf and ensure localhost rule
-- name: Locate pg_hba.conf
-  become: true
-  ansible.builtin.find:
-    paths: /postgresql
-    patterns: pg_hba.conf
-    recurse: yes
-  register: pg_hba
-
-- name: Create pg_hba.conf from template if missing
-  become: true
-  ansible.builtin.template:
-    src: pg_hba.conf.j2
-    dest: "/postgresql/{{ postgresql_version | default('14') }}/main/pg_hba.conf"
-    owner: postgres
-    group: postgres
-    mode: "0640"
-  when: pg_hba.matched == 0
-  notify: Restart postgresql
-
-- name: Allow local connections in existing pg_hba.conf
+# Update pg_hba.conf (Debian path). Change "14" if your version differs.
+- name: Allow local connections in pg_hba.conf (Debian/Ubuntu)
   become: true
   ansible.builtin.lineinfile:
-    path: "{{ pg_hba.files[0].path }}"
+    path: "/etc/postgresql/14/main/pg_hba.conf"
     regexp: '^host\s+all\s+all\s+127\.0\.0\.1/32\s+\w+'
-    line: 'host all all 127.0.0.1/32 md5'
+    line: 'host all all 127.0.0.1/32 trust'
     backrefs: yes
-  when: pg_hba.matched > 0
   notify: Restart postgresql
+  when: ansible_os_family == "Debian"
+
+
