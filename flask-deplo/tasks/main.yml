@@ -1,3 +1,29 @@
-#SPDX-License-Identifier: MIT-0
----
-# tasks file for flask-deplo
+--- 
+- name: Create base application directory 
+  ansible.builtin.file: 
+   path: /opt/flask-app 
+   state: directory 
+ 
+- name: Copy and extract application artifact (.tar.gz) 
+  ansible.builtin.unarchive: 
+ # app_artifact_path is passed as an extra variable from Jenkins 
+  src: "{{ app_artifact_path }}" 
+  dest: /opt/flask-app 
+  remote_src: true 
+ 
+- name: Install gunicorn 
+  ansible.builtin.pip: 
+  name: gunicorn 
+  virtualenv: /opt/flask-app/venv 
+ 
+- name: Copy systemd service file 
+  ansible.builtin.template: 
+  src: flask_app.service.j2 
+  dest: /etc/systemd/system/flask_app.service 
+ 
+- name: Restart and enable flask_app service 
+  ansible.builtin.systemd: 
+  name: flask_app 
+  daemon_reload: true 
+  state: restarted 
+  enabled: true

@@ -1,3 +1,32 @@
-#SPDX-License-Identifier: MIT-0
----
-# tasks file for postgresql
+--- 
+- name: Install PostgreSQL 
+  ansible.builtin.yum:
+  name: postgresql-server 
+  state: present 
+ 
+- name: Initialize PostgreSQL database 
+  ansible.builtin.shell: | 
+   postgresql-setup initdb 
+  args: 
+  creates: /var/lib/pgsql/data/postgresql.conf 
+ 
+- name: Start and enable PostgreSQL service 
+  ansible.builtin.service: 
+  name: postgresql 
+  state: started 
+  enabled: true 
+ 
+- name: Update pg_hba.conf to allow local connections 
+  ansible.builtin.lineinfile: 
+  path: /var/lib/pgsql/data/pg_hba.conf 
+  regexp: '^host\s+all\s+all\s+127\.0\.0\.1\/32\s+ident' 
+  line: 'host all all 127.0.0.1/32 trust' 
+  notify: Restart postgresql 
+ 
+- name: Execute init.sql script to create DB and user 
+  community.postgresql.postgresql_query: 
+  db: postgres 
+  query: "{{ lookup('file', '../files/db/init.sql') }}" 
+  login_user: postgres 
+  port: 5432 
+  become_user: postgres
