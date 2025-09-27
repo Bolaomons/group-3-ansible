@@ -28,16 +28,16 @@
   args:
     creates: "{{ venv_path }}/bin/activate"
 
-- name: Unarchive app artifact (path is on the TARGET because remote_src: true)
+- name: "Unarchive app artifact (path is on the TARGET because remote_src: true)"
   become: true
-  unarchive:
+  ansible.builtin.unarchive:
     src: "{{ app_artifact_path }}"
     dest: "{{ app_base_path }}"
     remote_src: true
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
     extra_opts:
-      - --strip-components=1
+      - "--strip-components=1"
 
 - name: Check for requirements.txt
   stat:
