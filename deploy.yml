@@ -13,6 +13,10 @@
     app_base_path: /opt/flask-app
     # Define if you aren't passing it from Jenkins:
     # app_artifact_path: /tmp/app.tar.gz
+    venv_path: "{{ app_base_path }}/venv"
+    # If the artifact is already on the app host, keep this path and remote_src: true in the role.
+    # If you upload it from the controller, use /tmp/app.tar.gz and scp it first.
+    app_artifact_path: /tmp/app.tar.gz
   roles:
     - python-flask
     - flask-deploy
