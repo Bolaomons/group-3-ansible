@@ -1,0 +1,12 @@
+---
+- name: Deploy Flask Application and Configure DB
+  hosts: App_servers
+  become: yes # Use sudo for installation/service management
+  vars:
+    app_package: "{{ lookup('env', 'APP_PACKAGE') }}" # Passed from Jenkins
+    db_name: flask_db
+    db_user: flask_user
+    db_pass: secure_password
+  roles:
+    - role: postgresql
+    - role: flask_app
