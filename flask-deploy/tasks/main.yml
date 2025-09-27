@@ -1,29 +1,83 @@
---- 
-- name: Create base application directory 
-  ansible.builtin.file: 
-   path: /opt/flask-app 
-   state: directory 
- 
-- name: Copy and extract application artifact (.tar.gz) 
-  ansible.builtin.unarchive: 
- # app_artifact_path is passed as an extra variable from Jenkins 
-  src: "{{ app_artifact_path }}" 
-  dest: /opt/flask-app 
-  remote_src: true 
- 
-- name: Install gunicorn 
-  ansible.builtin.pip: 
-  name: gunicorn 
-  virtualenv: /opt/flask-app/venv 
- 
-- name: Copy systemd service file 
-  ansible.builtin.template: 
-  src: flask_app.service.j2 
-  dest: /etc/systemd/system/flask_app.service 
- 
-- name: Restart and enable flask_app service 
-  ansible.builtin.systemd: 
-  name: flask_app 
-  daemon_reload: true 
-  state: restarted 
-  enabled: true
+---
+# roles/flask-deploy/tasks/main.yml
+
+- name: Create base application directory
+  become: true
+  ansible.builtin.file:
+    path: /opt/flask-app
+    state: directory
+    owner: ubuntu        # change if you run the service as another user
+    group: ubuntu
+    mode: "0755"
+
+# Ensure venv tooling exists
+- name: Install venv tooling (Debian/Ubuntu)
+  become: true
+  ansible.builtin.apt:
+    name: python3-venv
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+
+- name: Install venv tooling (RHEL/Amazon)
+  become: true
+  ansible.builtin.yum:
+    name: python3-virtualenv
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Create virtualenv
+  become: true
+  ansible.builtin.command: python3 -m venv /opt/flask-app/venv
+  args:
+    creates: /opt/flask-app/venv/bin/activate
+
+- name: Copy and extract application artifact (.tar.gz)
+  become: true
+  ansible.builtin.unarchive:
+    # app_artifact_path must be a path on the TARGET host (because remote_src: true)
+    src: "{{ app_artifact_path }}"
+    dest: /opt/flask-app
+    remote_src: true
+    owner: ubuntu
+    group: ubuntu
+    extra_opts:
+      - --strip-components=1
+
+- name: Check if a requirements.txt exists
+  ansible.builtin.stat:
+    path: /opt/flask-app/requirements.txt
+  register: reqfile
+
+- name: Install app dependencies from requirements.txt (if present)
+  become: true
+  ansible.builtin.pip:
+    requirements: /opt/flask-app/requirements.txt
+    virtualenv: /opt/flask-app/venv
+    virtualenv_command: python3 -m venv
+  when: reqfile.stat.exists
+
+- name: Install Flask and Gunicorn into venv (fallback if no requirements.txt)
+  become: true
+  ansible.builtin.pip:
+    name:
+      - flask
+      - gunicorn
+    virtualenv: /opt/flask-app/venv
+    virtualenv_command: python3 -m venv
+  when: not reqfile.stat.exists
+
+- name: Copy systemd service file
+  become: true
+  ansible.builtin.template:
+    src: flask_app.service.j2
+    dest: /etc/systemd/system/flask_app.service
+    mode: "0644"
+
+- name: Reload, enable, and start flask_app service
+  become: true
+  ansible.builtin.systemd:
+    name: flask_app
+    daemon_reload: true
+    enabled: true
+    state: started

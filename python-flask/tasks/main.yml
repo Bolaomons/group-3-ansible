@@ -1,13 +1,29 @@
---- 
-- name: Install Python 3 and pip 
-  ansible.builtin.yum: 
-  name: 
-  - python3 
-  - python3-pip 
-  state: present 
- 
-- name: Install Flask app dependencies 
-  ansible.builtin.pip: 
- # app_base_path is defined in the main deploy.yml playbook 
-  requirements: "{{ app_base_path }}/requirements.txt" 
-  virtualenv: "{{ app_base_path }}/venv"
+---
+# Ubuntu/Debian
+- name: Install Python 3 and pip (Debian/Ubuntu)
+  become: true
+  ansible.builtin.apt:
+    name:
+      - python3
+      - python3-pip
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+# (Optional) RHEL/Amazon Linux variant if you ever target those hosts
+- name: Install Python 3 and pip (RHEL/Amazon)
+  become: true
+  ansible.builtin.yum:
+    name:
+      - python3
+      - python3-pip
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install Flask and Gunicorn with pip3
+  become: true
+  ansible.builtin.pip:
+    name:
+      - flask
+      - gunicorn
+    executable: pip3
