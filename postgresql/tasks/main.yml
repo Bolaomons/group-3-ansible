@@ -1,32 +1,29 @@
---- 
-- name: Install PostgreSQL 
-  ansible.builtin.yum:
-  name: postgresql-server 
-  state: present 
- 
-- name: Initialize PostgreSQL database 
-  ansible.builtin.shell: | 
-   postgresql-setup initdb 
-  args: 
-  creates: /var/lib/pgsql/data/postgresql.conf 
- 
-- name: Start and enable PostgreSQL service 
-  ansible.builtin.service: 
-  name: postgresql 
-  state: started 
-  enabled: true 
- 
-- name: Update pg_hba.conf to allow local connections 
-  ansible.builtin.lineinfile: 
-  path: /var/lib/pgsql/data/pg_hba.conf 
-  regexp: '^host\s+all\s+all\s+127\.0\.0\.1\/32\s+ident' 
-  line: 'host all all 127.0.0.1/32 trust' 
-  notify: Restart postgresql 
- 
-- name: Execute init.sql script to create DB and user 
-  community.postgresql.postgresql_query: 
-  db: postgres 
-  query: "{{ lookup('file', '../files/db/init.sql') }}" 
-  login_user: postgres 
-  port: 5432 
-  become_user: postgres
+---
+- name: Install PostgreSQL packages (Debian/Ubuntu)
+  become: true
+  ansible.builtin.apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Ensure PostgreSQL is enabled and running (Debian/Ubuntu)
+  become: true
+  ansible.builtin.service:
+    name: postgresql
+    state: started
+    enabled: true
+  when: ansible_os_family == "Debian"
+
+# Update pg_hba.conf (Debian path). Change "14" if your version differs.
+- name: Allow local connections in pg_hba.conf (Debian/Ubuntu)
+  become: true
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/14/main/pg_hba.conf"
+    regexp: '^host\s+all\s+all\s+127\.0\.0\.1/32\s+\w+'
+    line: 'host all all 127.0.0.1/32 trust'
+    backrefs: yes
+  notify: Restart postgresql
+  when: ansible_os_family == "Debian"
